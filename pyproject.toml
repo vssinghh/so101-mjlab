@@ -1,0 +1,33 @@
+[project]
+name = "so101-mjlab"
+version = "0.1.0"
+description = "SO-ARM101 manipulation environments and sim-to-real deployment for mjlab"
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+  "mjlab>=1.1.0",
+  "pyserial>=3.5",
+]
+
+[project.scripts]
+so101-deploy = "so101_mjlab.deploy_real:main"
+
+[build-system]
+requires = ["uv_build>=0.8.18,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0.0",
+  "ruff>=0.14.14",
+]
+
+[tool.ruff]
+indent-width = 2
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B"]
+
+[project.entry-points."mjlab.tasks"]
+so101_mjlab = "so101_mjlab"

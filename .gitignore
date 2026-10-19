@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+build/
+dist/
+*.egg-info/
+logs/
+wandb/
+outputs/
+checkpoints/*/
+checkpoints/*.pt
+checkpoints/*.tgz
+checkpoints/*.log
+.pytest_cache/
+.ruff_cache/
+.DS_Store
