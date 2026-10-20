@@ -141,6 +141,7 @@ if log_root.exists():
                 input_names=["obs"],
                 output_names=["actions"],
                 opset_version=17,
+                dynamo=False,
             )
 PY
   colab download -s "$SESSION_CLEAN" /content/train.log "$LOCAL_SAVE_DIR/train.log" >/dev/null 2>&1 || true
