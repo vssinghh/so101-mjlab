@@ -80,10 +80,10 @@ def parse_args() -> argparse.Namespace:
   parser.add_argument("--onnx", type=Path, default=None, help="Exported ONNX policy.")
   parser.add_argument("--port", type=str, default=None, help="Serial port override.")
   parser.add_argument(
-    "--cube-xyz", type=float, nargs=3, default=[0.235, 0.018, -0.034]
+    "--cube-xyz", type=float, nargs=3, default=[0.215, 0.002, -0.036]
   )
-  parser.add_argument("--goal-xyz", type=float, nargs=3, default=[0.235, 0.018, 0.115])
-  parser.add_argument("--steps", type=int, default=75)
+  parser.add_argument("--goal-xyz", type=float, nargs=3, default=[0.215, 0.002, 0.115])
+  parser.add_argument("--steps", type=int, default=85)
   parser.add_argument("--max-delta-rad", type=float, default=0.08)
   parser.add_argument("--gripper-open-tick", type=int, default=2560)
   parser.add_argument("--gripper-clamp-tick", type=int, default=1800)
@@ -101,6 +101,8 @@ def main() -> None:
   mj_model.opt.timestep = 0.005
   mj_data = mujoco.MjData(mj_model)
   site_id = mujoco.mj_name2id(mj_model, mujoco.mjtObj.mjOBJ_SITE, "pinch_site")
+  g_fixed = mujoco.mj_name2id(mj_model, mujoco.mjtObj.mjOBJ_GEOM, "fixed_jaw_pad")
+  g_moving = mujoco.mj_name2id(mj_model, mujoco.mjtObj.mjOBJ_GEOM, "moving_jaw_pad")
   jnt_low = mj_model.jnt_range[:6, 0].astype(np.float32)
   jnt_high = mj_model.jnt_range[:6, 1].astype(np.float32)
   q_clamp_min = float((args.gripper_clamp_tick - ZERO_OFFSETS[5]) * RAD_PER_TICK)
@@ -168,26 +170,39 @@ def main() -> None:
     interpolate_to_pose(ser, q_home, duration_s=1.5, rate_hz=50.0)
     dq_est = np.zeros(6, dtype=np.float32)
     q_grasp_pose: np.ndarray | None = None
+    closing_steps = 0
 
     for step in range(args.steps):
       t0 = time.perf_counter()
       q_cur = read_joint_positions(ser)
       q_obs = q_cur.copy()
-      if grasped and q_obs[5] < 0.175:
-        q_obs[5] = 0.175
+      if not grasped and closing_steps == 0:
+        q_obs[5] = min(q_obs[5], DEFAULT_JOINT_POS[5])
+      elif grasped:
+        q_obs[5] = max(q_obs[5], 0.175)
+        dq_est[5] = max(dq_est[5], 0.0)
 
       mj_data.qpos[:6] = q_obs
       mj_data.qvel[:6] = dq_est
       mujoco.mj_forward(mj_model, mj_data)
       ee_real = mj_data.site_xpos[site_id].astype(np.float32).copy()
+      pad_mid = (
+        0.5 * (mj_data.geom_xpos[g_fixed] + mj_data.geom_xpos[g_moving])
+      ).astype(np.float32)
 
-      if not grasped and np.linalg.norm(ee_real - cube_pos_b) < 0.030 and last_action[5] < -0.5:
-        grasped = True
-        q_grasp_pose = q_cur.copy()
-        if recorder is not None:
-          recorder.snapshot("policy_grasp_clamped")
+      dist_to_cube = float(np.linalg.norm(pad_mid - cube_pos_b))
+      if not grasped and (
+        (dist_to_cube < 0.018 and ee_real[2] <= cube_pos_b[2] + 0.008)
+        or closing_steps > 0
+      ):
+        closing_steps += 1
+        if closing_steps >= 12:
+          grasped = True
+          q_grasp_pose = q_cur.copy()
+          if recorder is not None:
+            recorder.snapshot("policy_grasp_clamped")
       if grasped:
-        cube_pos_b = ee_real.copy()
+        cube_pos_b = pad_mid.copy()
 
       obs = build_state_observation(
         mj_model, mj_data, site_id, q_obs, dq_est, cube_pos_b, goal_pos_b, last_action
@@ -203,16 +218,25 @@ def main() -> None:
       mujoco.mj_step(mj_model, mj_data, nstep=4)
       q_next = mj_data.qpos[:6].astype(np.float32).copy()
       dq_est = mj_data.qvel[:6].astype(np.float32).copy()
-      if grasped and dq_est[5] < 0.0:
-        dq_est[5] = 0.0
 
-      q_cmd = np.clip(np.clip(q_next, jnt_low, jnt_high), q_cur - args.max_delta_rad, q_cur + args.max_delta_rad)
-      q_cmd[5] = max(q_clamp_min, float(q_target[5])) if (raw_action[5] < -0.5 or grasped) else min(q_open_max, float(q_cmd[5] + 0.22))
+      if closing_steps > 0 and not grasped:
+        q_cmd = q_cur.copy()
+      else:
+        q_blend = 0.35 * q_target + 0.65 * q_next
+        q_cmd = np.clip(
+          np.clip(q_blend, jnt_low, jnt_high),
+          q_cur - args.max_delta_rad,
+          q_cur + args.max_delta_rad,
+        )
+      q_cmd[5] = q_clamp_min if (closing_steps > 0 or grasped) else q_open_max
       command_joint_positions(ser, q_cmd)
       last_action = raw_action
 
       if step % 15 == 0 or step == args.steps - 1:
-        print(f"[step {step:03d}] real_ee={np.round(ee_real, 4)} grasped={grasped} ticks={rad_to_ticks(q_cur)}")
+        print(
+          f"[step {step:03d}] real_ee={np.round(ee_real, 4)} "
+          f"dist={dist_to_cube:.4f} grasped={grasped} ticks={rad_to_ticks(q_cur)}"
+        )
 
       elapsed = time.perf_counter() - t0
       if elapsed < dt:

@@ -110,7 +110,7 @@ class LiveCameraRecorder:
       mp4_side = self.out_dir / "so101_real_lift_side.mp4"
       writer = cv2.VideoWriter(
         str(mp4_side),
-        cv2.VideoWriter_fourcc(*"mp4v"),
+        cv2.VideoWriter_fourcc(*"avc1"),
         self.fps,
         (w_gif, h_gif),
       )
@@ -139,7 +139,7 @@ class LiveCameraRecorder:
       mp4_dual = self.out_dir / "so101_sim2real_lift.mp4"
       writer = cv2.VideoWriter(
         str(mp4_dual),
-        cv2.VideoWriter_fourcc(*"mp4v"),
+        cv2.VideoWriter_fourcc(*"avc1"),
         self.fps,
         (w_d, h_d),
       )
