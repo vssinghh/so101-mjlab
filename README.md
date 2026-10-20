@@ -47,7 +47,7 @@ uv run play Mjlab-Lift-Cube-SO101 --checkpoint-file checkpoints/latest_model.pt
 Train on a remote Google Colab GPU from the terminal (uploads a repo snapshot, runs `mjlab` PPO training, exports `policy.onnx`, and downloads the artifacts into `checkpoints/<run_name>/`):
 
 ```bash
-./scripts/train.sh lift_v4 --colab --env.scene.num-envs 4096 --agent.max-iterations 1000
+./scripts/train.sh lift_v5_dr --colab --env.scene.num-envs 4096 --agent.max-iterations 1000
 ```
 
 Or train directly on a local CUDA workstation:
@@ -55,8 +55,6 @@ Or train directly on a local CUDA workstation:
 ```bash
 uv run train Mjlab-Lift-Cube-SO101 --env.scene.num-envs 4096 --agent.max-iterations 1000
 ```
-
-An interactive Colab notebook is also included at [`notebooks/train_so101_colab.ipynb`](notebooks/train_so101_colab.ipynb).
 
 ### 4. Physical SO-101 Hardware Deployment (macOS / Linux)
 
