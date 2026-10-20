@@ -60,12 +60,16 @@ LOCAL_SAVE_DIR="$REPO_ROOT/checkpoints/$RUN_NAME"
 mkdir -p "$LOCAL_SAVE_DIR"
 
 echo "[train] Packing so101-mjlab snapshot into $LOCAL_SAVE_DIR/code_snapshot.tgz"
+SNAPSHOT_ITEMS=(pyproject.toml README.md src tests)
+if [[ -f "checkpoints/latest_model.pt" ]]; then
+  SNAPSHOT_ITEMS+=("checkpoints/latest_model.pt")
+fi
 tar czf "$LOCAL_SAVE_DIR/code_snapshot.tgz" \
   --exclude='__pycache__' \
   --exclude='*.pyc' \
   --exclude='.pytest_cache' \
   --exclude='.ruff_cache' \
-  pyproject.toml README.md src tests
+  "${SNAPSHOT_ITEMS[@]}"
 
 if [[ "$TARGET" == "local" ]]; then
   echo "[train] Running locally on Mac into $LOCAL_SAVE_DIR..."
@@ -86,18 +90,58 @@ pull_remote_checkpoints() {
   colab exec -s "$SESSION_CLEAN" --timeout 60 <<'PY' >/dev/null 2>&1 || true
 import shutil
 from pathlib import Path
+import torch
+import torch.nn as nn
 
 out_dir = Path("/content/export_bundle")
 out_dir.mkdir(parents=True, exist_ok=True)
 log_root = Path("/content/logs/rsl_rl")
 if log_root.exists():
-    pts = sorted(log_root.rglob("model_*.pt"), key=lambda p: p.stat().st_mtime)
-    onnxs = sorted(log_root.rglob("*.onnx"), key=lambda p: p.stat().st_mtime)
+    pts = [p for p in sorted(log_root.rglob("model_*.pt"), key=lambda p: p.stat().st_mtime) if "warmup" not in str(p)]
     if pts:
-        shutil.copy2(pts[-1], out_dir / "latest_model.pt")
-        shutil.copy2(pts[-1], out_dir / pts[-1].name)
-    if onnxs:
-        shutil.copy2(onnxs[-1], out_dir / "policy.onnx")
+        latest = pts[-1]
+        shutil.copy2(latest, out_dir / "latest_model.pt")
+        shutil.copy2(latest, out_dir / latest.name)
+        ckpt = torch.load(latest, map_location="cpu", weights_only=False)
+        sd = ckpt.get("actor_state_dict") or ckpt.get("model_state_dict", {})
+        if "mlp.0.weight" in sd:
+            class ExportActor(nn.Module):
+                def __init__(self, state_dict):
+                    super().__init__()
+                    self.has_norm = "obs_normalizer._mean" in state_dict
+                    if self.has_norm:
+                        self.register_buffer("mean", state_dict["obs_normalizer._mean"].clone())
+                        self.register_buffer("std", state_dict["obs_normalizer._std"].clone())
+                    layers = []
+                    idx = 0
+                    while f"mlp.{idx}.weight" in state_dict:
+                        w = state_dict[f"mlp.{idx}.weight"]
+                        b = state_dict[f"mlp.{idx}.bias"]
+                        lin = nn.Linear(w.shape[1], w.shape[0])
+                        lin.weight.data.copy_(w)
+                        lin.bias.data.copy_(b)
+                        layers.append(lin)
+                        if f"mlp.{idx + 2}.weight" in state_dict:
+                            layers.append(nn.ELU())
+                        idx += 2
+                    self.mlp = nn.Sequential(*layers)
+
+                def forward(self, obs):
+                    if self.has_norm:
+                        obs = (obs - self.mean) / (self.std + 1e-8)
+                    return self.mlp(obs)
+
+            actor = ExportActor(sd).eval()
+            obs_dim = sd["mlp.0.weight"].shape[1]
+            dummy = torch.zeros(1, obs_dim)
+            torch.onnx.export(
+                actor,
+                dummy,
+                str(out_dir / "policy.onnx"),
+                input_names=["obs"],
+                output_names=["actions"],
+                opset_version=17,
+            )
 PY
   colab download -s "$SESSION_CLEAN" /content/train.log "$LOCAL_SAVE_DIR/train.log" >/dev/null 2>&1 || true
   colab download -s "$SESSION_CLEAN" /content/export_bundle/latest_model.pt "$LOCAL_SAVE_DIR/latest_model.pt" >/dev/null 2>&1 || true
@@ -170,6 +214,15 @@ subprocess.run(
     check=True,
 )
 print("[VM] Installed mjlab and so101-mjlab.", flush=True)
+
+warmup_src = os.path.join(repo_dir, "checkpoints", "latest_model.pt")
+if os.path.exists(warmup_src):
+    warmup_dir = "/content/logs/rsl_rl/so101_lift_cube/warmup"
+    os.makedirs(warmup_dir, exist_ok=True)
+    ckpt = torch.load(warmup_src, map_location="cpu", weights_only=False)
+    ckpt["iter"] = 0
+    torch.save(ckpt, os.path.join(warmup_dir, "model_0.pt"))
+    print("[VM] Staged warm-start checkpoint at /content/logs/rsl_rl/so101_lift_cube/warmup/model_0.pt", flush=True)
 
 for p in ("/content/train.log", "/content/train.exit", "/content/train.pid"):
     if os.path.exists(p):

@@ -51,21 +51,28 @@ def so101_grasp_and_lift_reward(
   d_moving = torch.norm(p_moving - obj_pos_w, dim=-1)
 
   q_grip = robot.data.joint_pos[:, gripper_cfg.joint_ids].squeeze(-1)
+  q_roll = robot.data.joint_pos[:, 4]
   act_grip = env.action_manager.action[:, -1]
+
+  # Keep the wrist roll horizontal (-pi/2 rad) so the jaws stay level with the table.
+  level_wrist = torch.exp(-torch.square((q_roll + 1.5708) / 0.25))
 
   # Midpoint of fixed_jaw_pad and moving_jaw_pad only reaches the cube center
   # when the two pads straddle opposite faces of the cube.
-  in_jaws = torch.exp(-torch.square(d_mid / 0.016))
+  in_jaws = torch.exp(-torch.square(d_mid / 0.018))
 
-  err_fixed = (d_fixed - 0.019).clamp_min(0.0)
-  err_moving = (d_moving - 0.019).clamp_min(0.0)
+  # Encourage opening the jaws wide (q_grip >= 0.48 rad) while approaching the cube.
+  open_approach = (1.0 - in_jaws) * torch.sigmoid((q_grip - 0.46) / 0.04)
+
+  err_fixed = (d_fixed - 0.020).clamp_min(0.0)
+  err_moving = (d_moving - 0.020).clamp_min(0.0)
   pad_close = torch.exp(
-    -(torch.square(err_fixed) + torch.square(err_moving)) / (0.015**2)
+    -(torch.square(err_fixed) + torch.square(err_moving)) / (0.016**2)
   )
 
-  # A clamped 3 cm cube physically stalls q_grip in [0.12, 0.23] rad while act_grip < 0.
-  jaw_on_cube = torch.sigmoid((0.24 - q_grip) / 0.05) * torch.sigmoid(
-    (q_grip - 0.11) / 0.02
+  # A clamped 2.5-3.5 cm object stalls q_grip in [0.08, 0.28] rad while act_grip < 0.
+  jaw_on_cube = torch.sigmoid((0.28 - q_grip) / 0.05) * torch.sigmoid(
+    (q_grip - 0.08) / 0.02
   )
   preload = torch.sigmoid(-act_grip / 0.25)
   squeeze = jaw_on_cube * preload
@@ -76,7 +83,12 @@ def so101_grasp_and_lift_reward(
   pos_err_sq = torch.sum(torch.square(command.target_pos - obj_pos_w), dim=-1)
   bringing = torch.exp(-pos_err_sq / (bringing_std**2))
 
-  return 0.5 * in_jaws + clamped * (1.0 + 3.0 * lift_z + 3.0 * bringing)
+  reward = (
+    0.25 * open_approach
+    + 0.5 * in_jaws
+    + clamped * (1.0 + 3.0 * lift_z + 3.0 * bringing)
+  )
+  return reward * (0.5 + 0.5 * level_wrist)
 
 
 def get_cube_spec(
@@ -165,6 +177,65 @@ def so101_lift_cube_env_cfg(
   cfg.events["fingertip_friction_spin"].params["asset_cfg"].geom_names = fingertip_geoms
   cfg.events["fingertip_friction_roll"].params["asset_cfg"].geom_names = fingertip_geoms
 
+  # Sim-to-real domain randomization across table/base heights, cube sizes/masses, and servos.
+  cfg.events["reset_base"].params["pose_range"] = {
+    "x": (-0.015, 0.015),
+    "y": (-0.015, 0.015),
+    "z": (0.0, 0.055),
+    "yaw": (-0.06, 0.06),
+  }
+  cfg.events["reset_robot_joints"].params["position_range"] = (-0.08, 0.08)
+  cfg.events["reset_robot_joints"].params["velocity_range"] = (-0.05, 0.05)
+  cfg.events["cube_size"] = EventTermCfg(
+    mode="startup",
+    func=dr.geom_size,
+    params={
+      "asset_cfg": SceneEntityCfg("cube", geom_names=("cube_geom",)),
+      "operation": "scale",
+      "distribution": "uniform",
+      "axes": [0, 1, 2],
+      "ranges": (0.85, 1.15),
+    },
+  )
+  cfg.events["cube_mass"] = EventTermCfg(
+    mode="startup",
+    func=dr.pseudo_inertia,
+    params={
+      "asset_cfg": SceneEntityCfg("cube", body_names=("cube",)),
+      "alpha_range": (-0.35, 0.35),
+      "distribution": "uniform",
+    },
+  )
+  cfg.events["actuator_gains"] = EventTermCfg(
+    mode="startup",
+    func=dr.pd_gains,
+    params={
+      "asset_cfg": SceneEntityCfg("robot", actuator_names=(".*",)),
+      "kp_range": (0.85, 1.15),
+      "kd_range": (0.85, 1.15),
+      "operation": "scale",
+      "distribution": "uniform",
+    },
+  )
+  cfg.events["joint_damping"] = EventTermCfg(
+    mode="startup",
+    func=dr.joint_damping,
+    params={
+      "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
+      "operation": "scale",
+      "distribution": "uniform",
+      "ranges": (0.85, 1.15),
+    },
+  )
+  cfg.events["encoder_bias"] = EventTermCfg(
+    mode="reset",
+    func=dr.encoder_bias,
+    params={
+      "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
+      "bias_range": (-0.012, 0.012),
+    },
+  )
+
   assert cfg.scene.sensors is not None
   for sensor in cfg.scene.sensors:
     if sensor.name == "ee_ground_collision":
@@ -180,6 +251,10 @@ def so101_lift_cube_env_cfg(
     cfg.episode_length_s = int(1e9)
     cfg.observations["actor"].enable_corruption = False
     cfg.curriculum = {}
+    cfg.events["reset_base"].params["pose_range"] = {}
+    cfg.events["reset_robot_joints"].params["position_range"] = (0.0, 0.0)
+    cfg.events["reset_robot_joints"].params["velocity_range"] = (0.0, 0.0)
+    cfg.events.pop("encoder_bias", None)
     lift_cmd.resampling_time_range = (4.0, 4.0)
 
   return cfg

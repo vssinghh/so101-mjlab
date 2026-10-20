@@ -3,8 +3,11 @@
 Manipulation environments, GPU reinforcement learning training, and 50 Hz sim-to-real deployment for the open-source 6-DoF **SO-ARM101** robot arm built on [`mjlab`](https://github.com/mujocolab/mjlab).
 
 <p align="center">
-  <img src="docs/so101_trained_lift_rollout.gif" width="48%" alt="Trained SO-101 cube lifting rollout" />
-  <img src="docs/so101_lift_step75_at_goal.png" width="48%" alt="SO-101 holding cube at 3D goal" />
+  <img src="docs/so101_trained_lift_rollout.gif" width="48%" alt="Trained SO-101 cube lifting rollout in MuJoCo" />
+  <img src="docs/so101_real_lift_side.gif" width="48%" alt="Physical SO-101 sim-to-real lift rollout" />
+</p>
+<p align="center">
+  <img src="docs/so101_sim2real_lift.gif" width="97%" alt="Physical SO-101 dual-camera (side + wrist) lift rollout" />
 </p>
 
 ## Registered Tasks
