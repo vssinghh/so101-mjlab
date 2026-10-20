@@ -4,7 +4,7 @@
   <default>
     <default class="so101">
       <site group="5" size="0.005" rgba="1 0.2 0.2 0.8"/>
-      <joint axis="0 0 1" damping="0.60" frictionloss="0.052" armature="0.028"/>
+      <joint axis="0 0 1" damping="0.0" frictionloss="0.20" armature="0.0211"/>
       <default class="visual">
         <geom type="mesh" contype="0" conaffinity="0" density="0" group="2"/>
       </default>

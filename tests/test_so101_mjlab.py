@@ -1,6 +1,7 @@
 """Tests for SO-ARM101 mjlab robot configuration, tasks, and sim-to-real deployment."""
 
 from pathlib import Path
+
 import numpy as np
 import torch
 from mjlab.entity import Entity
@@ -12,10 +13,9 @@ from so101_mjlab.deploy_real import (
   ACTION_SCALE,
   DEFAULT_JOINT_POS,
   build_state_observation,
-  rad_to_ticks,
-  ticks_to_rad,
 )
 from so101_mjlab.so101 import get_so101_robot_cfg
+from so101_mjlab.sts3215_driver import rad_to_ticks, ticks_to_rad
 
 
 def test_so101_entity_compiles() -> None:
@@ -96,33 +96,40 @@ def test_so101_onnx_policy_multi_height_lift() -> None:
   mj_data = mujoco.MjData(mj_model)
   site_id = mujoco.mj_name2id(mj_model, mujoco.mjtObj.mjOBJ_SITE, "pinch_site")
 
-  for z_init, z_goal in ((0.015, 0.145), (-0.034, 0.115)):
-    mj_data.qpos[:6] = DEFAULT_JOINT_POS
-    mj_data.qvel[:6] = 0.0
-    mujoco.mj_forward(mj_model, mj_data)
-    cube_b = np.array([0.235, 0.018, z_init], dtype=np.float32)
-    goal_b = np.array([0.235, 0.018, z_goal], dtype=np.float32)
-    last_action = np.zeros(6, dtype=np.float32)
-    grasped = False
-    for _ in range(75):
-      q_cur = mj_data.qpos[:6].astype(np.float32).copy()
-      dq_cur = mj_data.qvel[:6].astype(np.float32).copy()
-      ee_pos = mj_data.site_xpos[site_id].astype(np.float32).copy()
-      if not grasped and np.linalg.norm(ee_pos - cube_b) < 0.025 and q_cur[5] < 0.28:
-        grasped = True
-      if grasped:
-        cube_b = ee_pos.copy()
-      obs = build_state_observation(
-        mj_model, mj_data, site_id, q_cur, dq_cur, cube_b, goal_b, last_action
-      )
-      raw_action = np.asarray(sess.run(None, {in_name: obs})[0]).reshape(-1)[:6]
-      mj_data.ctrl[:6] = DEFAULT_JOINT_POS + ACTION_SCALE * raw_action
-      mujoco.mj_step(mj_model, mj_data, nstep=4)
-      if grasped and mj_data.qpos[5] < 0.175:
-        mj_data.qpos[5] = 0.175
-        mj_data.qvel[5] = 0.0
-        mujoco.mj_forward(mj_model, mj_data)
-      last_action = raw_action
+  for stall_q in (0.175, 0.310):
+    for z_init, z_goal in ((0.015, 0.145), (-0.034, 0.115)):
+      mj_data.qpos[:6] = DEFAULT_JOINT_POS
+      mj_data.qvel[:6] = 0.0
+      mujoco.mj_forward(mj_model, mj_data)
+      cube_b = np.array([0.235, 0.018, z_init], dtype=np.float32)
+      goal_b = np.array([0.235, 0.018, z_goal], dtype=np.float32)
+      last_action = np.zeros(6, dtype=np.float32)
+      grasped = False
+      for _ in range(90):
+        q_cur = mj_data.qpos[:6].astype(np.float32).copy()
+        dq_cur = mj_data.qvel[:6].astype(np.float32).copy()
+        ee_pos = mj_data.site_xpos[site_id].astype(np.float32).copy()
+        if (
+          not grasped
+          and np.linalg.norm(ee_pos - cube_b) < 0.025
+          and q_cur[5] < stall_q + 0.08
+        ):
+          grasped = True
+        if grasped:
+          cube_b = ee_pos.copy()
+        obs = build_state_observation(
+          mj_model, mj_data, site_id, q_cur, dq_cur, cube_b, goal_b, last_action
+        )
+        raw_action = np.asarray(sess.run(None, {in_name: obs})[0]).reshape(-1)[:6]
+        mj_data.ctrl[:6] = DEFAULT_JOINT_POS + ACTION_SCALE * raw_action
+        mujoco.mj_step(mj_model, mj_data, nstep=4)
+        if grasped and mj_data.qpos[5] < stall_q:
+          mj_data.qpos[5] = stall_q
+          mj_data.qvel[5] = 0.0
+          mujoco.mj_forward(mj_model, mj_data)
+        last_action = raw_action
 
-    assert grasped, f"Policy failed to grasp at z_init={z_init}"
-    assert cube_b[2] - z_init > 0.07, f"Policy failed to lift at z_init={z_init}"
+      assert grasped, f"Policy failed to grasp at z_init={z_init}, stall_q={stall_q}"
+      assert cube_b[2] - z_init > 0.10, (
+        f"Policy failed to lift at z_init={z_init}, stall_q={stall_q}"
+      )

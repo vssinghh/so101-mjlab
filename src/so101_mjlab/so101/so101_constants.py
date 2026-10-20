@@ -1,6 +1,5 @@
 """SO-ARM101 constants and robot configuration for mjlab."""
 
-import math
 from pathlib import Path
 
 import mujoco
@@ -23,17 +22,17 @@ def get_spec() -> mujoco.MjSpec:
 
 
 ##
-# Actuator config (Feetech STS3215 12V 30 kg.cm servo).
+# Actuator config (Feetech STS3215 12V 30 kg.cm servo, system-identified at 50 Hz).
+# Fitted against 50 Hz hardware step responses and gravity droop probes
+# (checkpoints/sysid_sts3215.json, mean trajectory RMSE = 0.0097 rad = 0.55 deg).
 ##
 
-EFFORT_LIMIT = 3.35
-ARMATURE = 0.028
-
-NATURAL_FREQ = 6.0 * 2.0 * math.pi  # 6 Hz closed-loop bandwidth
-DAMPING_RATIO = 1.2
-
-STIFFNESS = ARMATURE * NATURAL_FREQ**2
-DAMPING = 2.0 * DAMPING_RATIO * ARMATURE * NATURAL_FREQ
+ARM_EFFORT_LIMIT = 1.47  # 50% hardware Torque_Limit register (500/1000 of 2.94 Nm)
+GRIPPER_EFFORT_LIMIT = 1.20  # 40% hardware Torque_Limit register (400/1000 of 2.94 Nm)
+ARMATURE = 0.0211
+FRICTIONLOSS = 0.20
+STIFFNESS = 18.33
+DAMPING = 1.34
 
 SO101_ARM_ACTUATOR_CFG = BuiltinPositionActuatorCfg(
   target_names_expr=(
@@ -45,16 +44,24 @@ SO101_ARM_ACTUATOR_CFG = BuiltinPositionActuatorCfg(
   ),
   stiffness=STIFFNESS,
   damping=DAMPING,
-  effort_limit=EFFORT_LIMIT,
+  effort_limit=ARM_EFFORT_LIMIT,
   armature=ARMATURE,
+  frictionloss=FRICTIONLOSS,
+  delay_min_lag=0,
+  delay_max_lag=2,
+  delay_hold_prob=0.2,
 )
 
 SO101_GRIPPER_ACTUATOR_CFG = BuiltinPositionActuatorCfg(
   target_names_expr=("gripper",),
   stiffness=STIFFNESS,
   damping=DAMPING,
-  effort_limit=EFFORT_LIMIT,
+  effort_limit=GRIPPER_EFFORT_LIMIT,
   armature=ARMATURE,
+  frictionloss=FRICTIONLOSS,
+  delay_min_lag=0,
+  delay_max_lag=2,
+  delay_hold_prob=0.2,
 )
 
 ##
@@ -69,7 +76,7 @@ HOME_KEYFRAME = EntityCfg.InitialStateCfg(
     "elbow_flex": 0.70,
     "wrist_flex": 0.95,
     "wrist_roll": -1.5708,
-    "gripper": 0.38,
+    "gripper": 0.65,
   },
   joint_vel={".*": 0.0},
 )

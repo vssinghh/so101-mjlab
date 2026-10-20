@@ -61,17 +61,17 @@ def so101_grasp_and_lift_reward(
   # when the two pads straddle opposite faces of the cube.
   in_jaws = torch.exp(-torch.square(d_mid / 0.018))
 
-  # Encourage opening the jaws wide (q_grip >= 0.48 rad) while approaching the cube.
-  open_approach = (1.0 - in_jaws) * torch.sigmoid((q_grip - 0.46) / 0.04)
+  # Encourage opening the jaws wide (q_grip >= 0.55 rad) while approaching the object.
+  open_approach = (1.0 - in_jaws) * torch.sigmoid((q_grip - 0.52) / 0.04)
 
-  err_fixed = (d_fixed - 0.020).clamp_min(0.0)
-  err_moving = (d_moving - 0.020).clamp_min(0.0)
+  err_fixed = (d_fixed - 0.025).clamp_min(0.0)
+  err_moving = (d_moving - 0.025).clamp_min(0.0)
   pad_close = torch.exp(
-    -(torch.square(err_fixed) + torch.square(err_moving)) / (0.016**2)
+    -(torch.square(err_fixed) + torch.square(err_moving)) / (0.018**2)
   )
 
-  # A clamped 2.5-3.5 cm object stalls q_grip in [0.08, 0.28] rad while act_grip < 0.
-  jaw_on_cube = torch.sigmoid((0.28 - q_grip) / 0.05) * torch.sigmoid(
+  # A clamped 2.8-4.5 cm object stalls q_grip in [0.08, 0.38] rad while act_grip < 0.
+  jaw_on_cube = torch.sigmoid((0.38 - q_grip) / 0.04) * torch.sigmoid(
     (q_grip - 0.08) / 0.02
   )
   preload = torch.sigmoid(-act_grip / 0.25)
@@ -84,7 +84,7 @@ def so101_grasp_and_lift_reward(
   bringing = torch.exp(-pos_err_sq / (bringing_std**2))
 
   reward = (
-    0.25 * open_approach
+    0.35 * open_approach
     + 0.5 * in_jaws
     + clamped * (1.0 + 3.0 * lift_z + 3.0 * bringing)
   )
@@ -92,11 +92,11 @@ def so101_grasp_and_lift_reward(
 
 
 def get_cube_spec(
-  cube_size: float = 0.015,
-  mass: float = 0.03,
+  cube_size: float = 0.0175,
+  mass: float = 0.025,
   rgba: tuple[float, float, float, float] = (0.85, 0.2, 0.2, 1.0),
 ) -> mujoco.MjSpec:
-  """Create a 3 cm, 30 g cube sized for the SO-101 parallel jaw gripper."""
+  """Create a 3.5 cm nominal graspable block (randomized 2.8-4.55 cm in DR)."""
   spec = mujoco.MjSpec()
   body = spec.worldbody.add_body(name="cube")
   body.add_freejoint(name="cube_joint")
@@ -169,6 +169,7 @@ def so101_lift_cube_env_cfg(
     "wrist_.*",
   )
   cfg.rewards["joint_vel_hinge"].params["max_vel"] = 1.5
+  cfg.rewards["action_rate_l2"].weight = -0.05
 
   fingertip_geoms = r"(fixed|moving)_jaw_pad"
   cfg.events["fingertip_friction_slide"].params[
@@ -177,7 +178,7 @@ def so101_lift_cube_env_cfg(
   cfg.events["fingertip_friction_spin"].params["asset_cfg"].geom_names = fingertip_geoms
   cfg.events["fingertip_friction_roll"].params["asset_cfg"].geom_names = fingertip_geoms
 
-  # Sim-to-real domain randomization across table/base heights, cube sizes/masses, and servos.
+  # Sim-to-real domain randomization across table/base heights, object sizes/masses, and servos.
   cfg.events["reset_base"].params["pose_range"] = {
     "x": (-0.015, 0.015),
     "y": (-0.015, 0.015),
@@ -194,7 +195,7 @@ def so101_lift_cube_env_cfg(
       "operation": "scale",
       "distribution": "uniform",
       "axes": [0, 1, 2],
-      "ranges": (0.85, 1.15),
+      "ranges": (0.80, 1.30),
     },
   )
   cfg.events["cube_mass"] = EventTermCfg(
@@ -217,14 +218,24 @@ def so101_lift_cube_env_cfg(
       "distribution": "uniform",
     },
   )
-  cfg.events["joint_damping"] = EventTermCfg(
+  cfg.events["joint_frictionloss"] = EventTermCfg(
     mode="startup",
-    func=dr.joint_damping,
+    func=dr.dof_frictionloss,
     params={
       "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
       "operation": "scale",
       "distribution": "uniform",
-      "ranges": (0.85, 1.15),
+      "ranges": (0.70, 1.30),
+    },
+  )
+  cfg.events["effort_limits"] = EventTermCfg(
+    mode="startup",
+    func=dr.effort_limits,
+    params={
+      "asset_cfg": SceneEntityCfg("robot", actuator_names=(".*",)),
+      "operation": "scale",
+      "distribution": "uniform",
+      "effort_limit_range": (0.85, 1.15),
     },
   )
   cfg.events["encoder_bias"] = EventTermCfg(
@@ -232,7 +243,7 @@ def so101_lift_cube_env_cfg(
     func=dr.encoder_bias,
     params={
       "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
-      "bias_range": (-0.012, 0.012),
+      "bias_range": (-0.015, 0.015),
     },
   )
 

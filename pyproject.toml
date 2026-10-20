@@ -5,7 +5,9 @@ description = "SO-ARM101 manipulation environments and sim-to-real deployment fo
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
 dependencies = [
-  "mjlab>=1.1.0",
+  "mjlab>=1.6.0",
+  "onnxruntime>=1.18.0",
+  "opencv-python>=4.9.0",
   "pyserial>=3.5",
 ]
 

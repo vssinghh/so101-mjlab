@@ -3,18 +3,56 @@
 from __future__ import annotations
 
 import glob
+import json
+import os
 import time
 from pathlib import Path
 
 import numpy as np
 
-DEFAULT_PORT = "/dev/tty.usbmodem5B790143431"
-KNOWN_LEADER_SUBSTR = "5B8E116931"
+DEFAULT_PORT = os.environ.get("SO101_PORT", "/dev/tty.usbmodem5B790143431")
+KNOWN_LEADER_SUBSTR = os.environ.get("SO101_LEADER_SUBSTR", "5B8E116931")
+DEFAULT_LEROBOT_CALIB = (
+  Path.home()
+  / ".cache/huggingface/lerobot/calibration/robots/so_follower/so_101_follower.json"
+)
 BAUD = 1_000_000
-ZERO_OFFSETS = np.array(
+DEFAULT_ZERO_OFFSETS = np.array(
   [2027.5, 1851.0, 2035.0, 1930.0, 1997.0, 2048.0], dtype=np.float64
 )
 RAD_PER_TICK = (2.0 * np.pi) / 4096.0
+
+
+def load_zero_offsets(calibration_path: Path | None = None) -> np.ndarray:
+  """Load zero-radian tick offsets from a LeRobot follower calibration JSON file."""
+  offsets = DEFAULT_ZERO_OFFSETS.copy()
+  cand = calibration_path or Path(
+    os.environ.get("SO101_CALIBRATION_FILE", str(DEFAULT_LEROBOT_CALIB))
+  )
+  if not cand.exists():
+    return offsets
+  try:
+    data = json.loads(cand.read_text())
+    joint_names = (
+      "shoulder_pan",
+      "shoulder_lift",
+      "elbow_flex",
+      "wrist_flex",
+      "wrist_roll",
+      "gripper",
+    )
+    for idx, name in enumerate(joint_names):
+      entry = data.get(name, {})
+      if "zero_offset" in entry:
+        offsets[idx] = float(entry["zero_offset"])
+      elif idx < 4 and "range_min" in entry and "range_max" in entry:
+        offsets[idx] = 0.5 * (float(entry["range_min"]) + float(entry["range_max"]))
+  except Exception:
+    pass
+  return offsets
+
+
+ZERO_OFFSETS = load_zero_offsets()
 
 
 def _checksum(packet_body: list[int]) -> int:
@@ -26,8 +64,16 @@ def read_u16(ser, motor_id: int, reg: int) -> int:
   ser.reset_input_buffer()
   ser.write(bytes([0xFF, 0xFF, *body, _checksum(body)]))
   resp = ser.read(8)
-  if len(resp) == 8 and resp[0] == 0xFF and resp[1] == 0xFF:
-    return int(resp[5] | (resp[6] << 8))
+  if (
+    len(resp) == 8
+    and resp[0] == 0xFF
+    and resp[1] == 0xFF
+    and resp[2] == motor_id
+    and _checksum(list(resp[2:7])) == resp[7]
+  ):
+    val = int(resp[5] | (resp[6] << 8))
+    if reg != 56 or 0 <= val < 4096:
+      return val
   return -1
 
 
@@ -46,16 +92,19 @@ def write_u16(ser, motor_id: int, reg: int, val: int) -> None:
 
 
 def configure_servo_torque(ser) -> None:
-  """Configure STS3215 torque limits and continuous 75% holding torque on Motor 6."""
-  for m in range(1, 6):
-    write_u16(ser, m, 48, 500)
+  """Sync goal position to present position, set smooth acc/speed profiles, and enable torque."""
+  for m in range(1, 7):
+    cur = read_u16(ser, m, 56)
+    if cur < 0:
+      cur = read_u16(ser, m, 56)
+    if 0 <= cur < 4096:
+      write_u16(ser, m, 42, cur)
+    write_u8(ser, m, 41, 35)
+    write_u16(ser, m, 46, 1100)
+    write_u16(ser, m, 48, 500 if m < 6 else 400)
     write_u8(ser, m, 40, 1)
-  write_u8(ser, 6, 55, 0)
-  write_u8(ser, 6, 34, 75)
-  write_u8(ser, 6, 36, 75)
-  write_u8(ser, 6, 55, 1)
-  write_u16(ser, 6, 48, 750)
-  write_u8(ser, 6, 40, 1)
+  time.sleep(0.02)
+  ser.reset_input_buffer()
 
 
 def open_follower_serial(port: str | None = None):
