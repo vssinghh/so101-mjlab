@@ -69,8 +69,8 @@ tar czf "$LOCAL_SAVE_DIR/code_snapshot.tgz" \
   "${SNAPSHOT_ITEMS[@]}"
 
 if [[ "$TARGET" == "local" ]]; then
-  echo "[train] Running locally on Mac into $LOCAL_SAVE_DIR..."
-  WANDB_MODE=offline PYTHONPATH="src" "/Users/vipinsingh/Documents/Antigravity/open source/mjlab/.venv/bin/train" \
+  echo "[train] Running locally into $LOCAL_SAVE_DIR..."
+  WANDB_MODE=offline PYTHONPATH="src" uv run train \
     "$TASK_ID" "${TRAIN_ARGS[@]}" --log-root "$LOCAL_SAVE_DIR/logs" 2>&1 | tee "$LOCAL_SAVE_DIR/train.log"
   exit 0
 fi
