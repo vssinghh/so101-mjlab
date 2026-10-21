@@ -14471,48 +14471,55 @@
   },
   "fitted_params": {
     "shoulder_pan": {
-      "kp": 20.0,
-      "kd": 2.2,
+      "kp": 40.0,
+      "kd": 3.0,
       "armature": 0.045,
-      "frictionloss": 0.06,
-      "rmse_rad": 0.010961045807527435
+      "frictionloss": 0.2,
+      "rmse_rad": 0.004622031511789955
     },
     "shoulder_lift": {
-      "kp": 16.0,
+      "kp": 20.0,
       "kd": 1.5,
-      "armature": 0.045,
+      "armature": 0.028,
       "frictionloss": 0.2,
-      "rmse_rad": 0.009336605531810942
+      "rmse_rad": 0.006578738547075701
     },
     "elbow_flex": {
-      "kp": 12.0,
+      "kp": 16.0,
       "kd": 1.5,
-      "armature": 0.045,
+      "armature": 0.028,
       "frictionloss": 0.2,
-      "rmse_rad": 0.012119734120772396,
+      "rmse_rad": 0.010016558302007036,
       "gravity_kp_mean": 6.608994803556333
     },
     "wrist_flex": {
-      "kp": 12.0,
-      "kd": 1.5,
+      "kp": 32.0,
+      "kd": 2.2,
       "armature": 0.045,
-      "frictionloss": 0.02,
-      "rmse_rad": 0.01414350200766776,
+      "frictionloss": 0.2,
+      "rmse_rad": 0.007816097452801924,
       "gravity_kp_mean": 2.717130662621551
     },
     "wrist_roll": {
-      "kp": 12.0,
-      "kd": 1.5,
+      "kp": 40.0,
+      "kd": 3.0,
       "armature": 0.045,
-      "frictionloss": 0.02,
-      "rmse_rad": 0.017111167677449933
+      "frictionloss": 0.2,
+      "rmse_rad": 0.005444254005855417
     },
     "gripper": {
-      "kp": 16.0,
-      "kd": 1.5,
-      "armature": 0.045,
-      "frictionloss": 0.12,
-      "rmse_rad": 0.015015290450543076
+      "kp": 32.0,
+      "kd": 2.2,
+      "armature": 0.028,
+      "frictionloss": 0.06,
+      "rmse_rad": 0.009525741562448167
     }
+  },
+  "shared_constants_in_so101_constants_py": {
+    "note": "Hand-tuned shared constants starting from fitted_params and reflected rotor armature",
+    "kp": 18.33,
+    "kd": 1.34,
+    "armature": 0.0211,
+    "frictionloss": 0.2
   }
 }

@@ -22,9 +22,11 @@ def get_spec() -> mujoco.MjSpec:
 
 
 ##
-# Actuator config (Feetech STS3215 12V 30 kg.cm servo, system-identified at 50 Hz).
-# Fitted against 50 Hz hardware step responses and gravity droop probes
-# (checkpoints/sysid_sts3215.json, mean trajectory RMSE = 0.0097 rad = 0.55 deg).
+# Actuator config (Feetech STS3215 12V 30 kg.cm servo).
+# Per-joint 50 Hz step-response fits in checkpoints/sysid_sts3215.json span
+# kp in [12, 20] N*m/rad, kd in [1.5, 2.2] N*m*s/rad, and frictionloss in [0.02, 0.20] N*m.
+# The shared constants below are hand-tuned starting from that sysid fit (with +/-15%
+# domain randomization in env_cfgs.py) and reflected rotor armature (mean RMSE = 0.0149 rad).
 ##
 
 ARM_EFFORT_LIMIT = 1.47  # 50% hardware Torque_Limit register (500/1000 of 2.94 Nm)

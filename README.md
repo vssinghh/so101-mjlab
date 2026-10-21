@@ -17,7 +17,7 @@
 | Component | Details |
 | :--- | :--- |
 | **Task (`Mjlab-Lift-Cube-SO101`)** | Reach, grasp, and lift `2.8 to 4.55 cm` objects to randomized 3D targets from a `24D` state vector (`6` joint pos, `6` joint vel, `3D` ee-to-object, `3D` object-to-goal, `6` previous actions) |
-| **Actuator SysID** | Feetech STS3215 (`12V`) fitted from `50 Hz` step responses ([`sysid_sts3215.json`](checkpoints/sysid_sts3215.json)): `kp = 18.33`, `kd = 1.34`, `frictionloss = 0.20`, `armature = 0.0211`, effort limits `1.47 N*m` (arm) / `1.20 N*m` (gripper) |
+| **Actuator Model** | Feetech STS3215 (`12V`) hand-tuned starting from `50 Hz` step-response sysid ([`sysid_sts3215.json`](checkpoints/sysid_sts3215.json), per-joint `kp` `12 to 20`, `kd` `1.5 to 2.2`): shared `kp = 18.33`, `kd = 1.34`, `frictionloss = 0.20`, rotor `armature = 0.0211`, effort limits `1.47 N*m` (arm) / `1.20 N*m` (gripper) |
 | **RL Training** | `2048` parallel MuJoCo envs, `1000` PPO iterations (`49.15M` steps) with object size, mass, friction, PD gain, effort limit, and `0 to 2` step delay randomization |
 | **50 Hz Real Loop** | [`deploy_real.py`](src/so101_mjlab/deploy_real.py) reads the 6 STS3215 encoders (`q_cur`), runs [`policy.onnx`](checkpoints/policy.onnx), and writes the 6 joint position targets over `1 Mbps` USB serial |
 | **Object Pose Input** | Initial 3D object position is passed via `--cube-xyz` in the base frame; once the jaws stall on the object, the object position tracks the jaw pad midpoint (`pad_mid`) |

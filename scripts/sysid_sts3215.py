@@ -17,7 +17,11 @@ import numpy as np
 from mjlab.entity import Entity
 
 from so101_mjlab.so101.so101_constants import (
+  ARMATURE,
+  DAMPING,
+  FRICTIONLOSS,
   HOME_KEYFRAME,
+  STIFFNESS,
   get_so101_robot_cfg,
 )
 from so101_mjlab.sts3215_driver import (
@@ -210,6 +214,13 @@ def main() -> None:
 
   fitted = fit_mujoco_actuators(payload)
   payload["fitted_params"] = fitted
+  payload["shared_constants_in_so101_constants_py"] = {
+    "note": "Hand-tuned shared constants starting from fitted_params and reflected rotor armature",
+    "kp": STIFFNESS,
+    "kd": DAMPING,
+    "armature": ARMATURE,
+    "frictionloss": FRICTIONLOSS,
+  }
   args.out.write_text(json.dumps(payload, indent=2))
   print(f"[sysid] Saved system ID results to {args.out}")
 
