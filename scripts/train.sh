@@ -8,9 +8,8 @@ set -euo pipefail
 # Usage:
 #   ./scripts/train.sh <run_name> [--colab | --local] [train args...]
 #
-# Examples:
+# Example:
 #   ./scripts/train.sh lift_v7_sysid --colab --env.scene.num-envs 2048 --agent.max-iterations 1000
-#   ./scripts/train.sh lift_rgb --colab --task Mjlab-Lift-Cube-SO101-Rgb --env.scene.num-envs 1024
 
 if [[ $# -lt 1 || "$1" == "-h" || "$1" == "--help" ]]; then
   echo "Usage: $0 <run_name> [--colab | --local] [--task <task_id>] [train args...]"
@@ -61,9 +60,6 @@ mkdir -p "$LOCAL_SAVE_DIR"
 
 echo "[train] Packing so101-mjlab snapshot into $LOCAL_SAVE_DIR/code_snapshot.tgz"
 SNAPSHOT_ITEMS=(pyproject.toml README.md src tests)
-if [[ -f "checkpoints/latest_model.pt" ]]; then
-  SNAPSHOT_ITEMS+=("checkpoints/latest_model.pt")
-fi
 tar czf "$LOCAL_SAVE_DIR/code_snapshot.tgz" \
   --exclude='__pycache__' \
   --exclude='*.pyc' \
@@ -167,15 +163,6 @@ subprocess.run(
     check=True,
 )
 print("[VM] Installed mjlab and so101-mjlab.", flush=True)
-
-warmup_src = os.path.join(repo_dir, "checkpoints", "latest_model.pt")
-if os.path.exists(warmup_src):
-    warmup_dir = "/content/logs/rsl_rl/so101_lift_cube/warmup"
-    os.makedirs(warmup_dir, exist_ok=True)
-    ckpt = torch.load(warmup_src, map_location="cpu", weights_only=False)
-    ckpt["iter"] = 0
-    torch.save(ckpt, os.path.join(warmup_dir, "model_0.pt"))
-    print("[VM] Staged warm-start checkpoint at /content/logs/rsl_rl/so101_lift_cube/warmup/model_0.pt", flush=True)
 
 for p in ("/content/train.log", "/content/train_tail.txt", "/content/train.exit", "/content/train.pid"):
     if os.path.exists(p):

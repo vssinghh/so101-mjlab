@@ -27,18 +27,12 @@ def test_so101_entity_compiles() -> None:
   assert model.ncam == 1
 
 
-def test_so101_tasks_registered() -> None:
+def test_so101_task_registered() -> None:
   tasks = list_tasks()
-  for task_id in (
-    "Mjlab-Lift-Cube-SO101",
-    "Mjlab-Lift-Cube-SO101-Rgb",
-    "Mjlab-Lift-Cube-SO101-Depth",
-  ):
-    assert task_id in tasks
-    env_cfg = load_env_cfg(task_id)
-    rl_cfg = load_rl_cfg(task_id)
-    assert env_cfg is not None
-    assert rl_cfg is not None
+  task_id = "Mjlab-Lift-Cube-SO101"
+  assert task_id in tasks
+  assert load_env_cfg(task_id) is not None
+  assert load_rl_cfg(task_id) is not None
 
 
 def test_so101_lift_cube_env_step() -> None:
