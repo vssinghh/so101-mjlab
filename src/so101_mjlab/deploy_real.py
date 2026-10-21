@@ -78,8 +78,8 @@ def parse_args() -> argparse.Namespace:
   parser.add_argument("--port", type=str, default=None, help="Serial port override.")
   parser.add_argument("--cube-xyz", type=float, nargs=3, default=[0.215, 0.002, -0.036])
   parser.add_argument("--goal-xyz", type=float, nargs=3, default=[0.215, 0.002, 0.115])
-  parser.add_argument("--steps", type=int, default=105)
-  parser.add_argument("--max-delta-rad", type=float, default=0.030)
+  parser.add_argument("--steps", type=int, default=150)
+  parser.add_argument("--max-delta-rad", type=float, default=0.025)
   parser.add_argument("--capture-dir", type=Path, default=None)
   parser.add_argument("--no-place-back", action="store_true")
   parser.add_argument("--relax", action="store_true")
@@ -169,12 +169,13 @@ def main() -> None:
     q_prev = read_joint_positions(ser)
     q_cmd = q_prev.copy()
     dq_est = np.zeros(6, dtype=np.float32)
+    act_ema = np.zeros(6, dtype=np.float32)
     q_grasp_pose: np.ndarray | None = None
 
     for step in range(args.steps):
       t0 = time.perf_counter()
       q_cur = read_joint_positions(ser)
-      dq_est = 0.5 * dq_est + 0.5 * ((q_cur - q_prev) / dt).astype(np.float32)
+      dq_est = 0.75 * dq_est + 0.25 * ((q_cur - q_prev) / dt).astype(np.float32)
       q_prev = q_cur.copy()
 
       mj_data.qpos[:6] = q_cur
@@ -189,7 +190,7 @@ def main() -> None:
         not grasped
         and dist_to_cube < 0.025
         and pad_mid[2] < -0.020
-        and 0.10 < q_cur[5] < 0.40
+        and 0.20 < q_cur[5] < 0.40
         and abs(dq_est[5]) < 0.40
         and last_action[5] < -0.25
       ):
@@ -208,10 +209,9 @@ def main() -> None:
         if ort_session is not None and input_name is not None
         else np.zeros(6, dtype=np.float32)
       )
+      act_ema = (0.55 * act_ema + 0.45 * raw_action).astype(np.float32)
 
-      q_target = np.clip(
-        DEFAULT_JOINT_POS + ACTION_SCALE * raw_action, jnt_low, jnt_high
-      )
+      q_target = np.clip(DEFAULT_JOINT_POS + ACTION_SCALE * act_ema, jnt_low, jnt_high)
       arm_delta = args.max_delta_rad * min(1.0, (step + 1) / 10.0)
       delta_vec = np.array([arm_delta] * 5 + [0.08], dtype=np.float32)
       track_vec = np.array([0.10] * 5 + [0.25], dtype=np.float32)

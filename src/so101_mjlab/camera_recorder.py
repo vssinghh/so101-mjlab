@@ -66,7 +66,7 @@ class LiveCameraRecorder:
         if f1 is not None:
           self._frames_side.append(f1.copy())
           if f2 is not None:
-            h_target = 360
+            h_target = 300
             w1 = int(f1.shape[1] * (h_target / f1.shape[0]))
             w2 = int(f2.shape[1] * (h_target / f2.shape[0]))
             r1 = cv2.resize(f1, (w1, h_target), interpolation=cv2.INTER_AREA)
@@ -119,7 +119,9 @@ class LiveCameraRecorder:
         resized = cv2.resize(f, (w_gif, h_gif), interpolation=cv2.INTER_AREA)
         writer.write(resized)
         rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
-        pil_side.append(Image.fromarray(rgb))
+        pil_side.append(
+          Image.fromarray(rgb).quantize(colors=256, method=Image.Quantize.MEDIANCUT)
+        )
       writer.release()
       saved_files.append(str(mp4_side))
 
@@ -128,7 +130,7 @@ class LiveCameraRecorder:
         gif_side,
         save_all=True,
         append_images=pil_side[1:],
-        duration=int(1000.0 / self.fps),
+        duration=75,
         loop=0,
         optimize=True,
       )
@@ -147,7 +149,9 @@ class LiveCameraRecorder:
       for f in self._frames_dual:
         writer.write(f)
         rgb = cv2.cvtColor(f, cv2.COLOR_BGR2RGB)
-        pil_dual.append(Image.fromarray(rgb))
+        pil_dual.append(
+          Image.fromarray(rgb).quantize(colors=256, method=Image.Quantize.MEDIANCUT)
+        )
       writer.release()
       saved_files.append(str(mp4_dual))
 
@@ -156,7 +160,7 @@ class LiveCameraRecorder:
         gif_dual,
         save_all=True,
         append_images=pil_dual[1:],
-        duration=int(1000.0 / self.fps),
+        duration=75,
         loop=0,
         optimize=True,
       )
